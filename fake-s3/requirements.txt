@@ -1,0 +1,6 @@
+uvicorn==0.11.8
+aiofiles==0.5.0
+pytest==6.0.1
+pytest-asyncio==0.14.0
+boto3==1.14.48
+pylint==2.6.0
