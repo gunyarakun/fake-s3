@@ -68,5 +68,5 @@ def test_list(s3_client):
         body = f'test body {i}'
         s3_client.put_object(Bucket=bucket, Key=key, Body=body)
 
-    response = s3_client.list_objects_v2(Bucket=bucket, Prefix=key)
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
     assert len(response['Contents']) == 100

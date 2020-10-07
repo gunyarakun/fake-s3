@@ -1,4 +1,5 @@
 import os
+import urllib
 import hashlib
 import aiofiles
 from datetime import datetime
@@ -38,15 +39,17 @@ def find_all_files(directory):
         for file in files:
             yield os.path.join(root, file)
 
-async def send_list(root_path, send):
+async def send_list(bucket_path, prefix, send):
     root_elem = ET.Element('ListBucketResult', xmlns='http://s3.amazonaws.com/doc/2006-03-01/')
-    for path in find_all_files(root_path):
+    prefix_path = os.path.join(bucket_path, prefix)
+    print(f'prefix: {prefix_path}')
+    for path in find_all_files(prefix_path):
         stat = os.stat(path)
         mtime = datetime.utcfromtimestamp(stat.st_mtime)
         iso_mtime = mtime.strftime('%Y-%m-%dT%H:%M:%SZ')
         etag_key = (iso_mtime + path).encode('utf-8') # FIXME: wow, isn't from the content!
         etag = '"' + hashlib.sha1(etag_key).hexdigest() + '"'
-        rel_path = os.path.relpath(path, root_path)
+        rel_path = os.path.relpath(path, bucket_path)
 
         contents = ET.SubElement(root_elem, 'Contents')
         ET.SubElement(contents, 'Key').text = rel_path
@@ -64,7 +67,9 @@ async def get(scope, send):
     path = resolve_path(scope['path'])
 
     if os.path.isdir(path):
-        return await send_list(path, send)
+        # TODO: Check the path is only a bucket name
+        qs = urllib.parse.parse_qs(scope['query_string'])
+        return await send_list(path, qs[b'prefix'][0].decode('utf-8'), send)
 
     if not os.path.isfile(path):
         await send_response(send, 404)
