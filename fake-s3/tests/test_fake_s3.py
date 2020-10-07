@@ -6,6 +6,7 @@ import uvicorn
 import contextlib
 from botocore.client import Config
 from multiprocessing import Process
+from botocore.exceptions import ClientError
 
 from app import app
 
@@ -35,7 +36,7 @@ def s3_client(available_port, server):
         config=Config(s3={'addressing_style': 'path'}) # Include a bucket name in the path
     )
 
-def test_put_and_get(s3_client):
+def test_put_get_and_delete(s3_client):
     epoch = int(time.time() * 1000)
     bucket = f'bucket-{epoch}'
     key = f'test-put-{epoch}'
@@ -44,5 +45,10 @@ def test_put_and_get(s3_client):
 
     response = s3_client.get_object(Bucket=bucket, Key=key)
     resp_body = response['Body'].read().decode('utf-8')
-
     assert body == resp_body
+
+    response = s3_client.delete_object(Bucket=bucket, Key=key)
+    assert response['ResponseMetadata']['HTTPStatusCode'] == 204
+
+    with pytest.raises(ClientError):
+        response = s3_client.get_object(Bucket=bucket, Key=key)

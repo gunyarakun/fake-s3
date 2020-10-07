@@ -16,6 +16,9 @@ async def write_file(path, receive):
             await f.write(body)
             more_body = message.get('more_body', False)
 
+def resolve_path(path):
+    return ROOT_PATH + os.path.abspath(path)
+
 async def send_response(send, status, headers=[], body=b''):
     await send({
         'type': 'http.response.start',
@@ -28,7 +31,7 @@ async def send_response(send, status, headers=[], body=b''):
     })
 
 async def get(scope, send):
-    path = ROOT_PATH + os.path.abspath(scope['path'])
+    path = resolve_path(scope['path'])
 
     if not os.path.isfile(path):
         await send_response(send, 404)
@@ -47,7 +50,7 @@ async def put(scope, receive, send):
         await send_response(send, 400)
         return
 
-    path = ROOT_PATH + abspath
+    path = resolve_path(abspath)
 
     dirname = os.path.dirname(path)
     if not os.path.exists(dirname):
@@ -56,6 +59,17 @@ async def put(scope, receive, send):
     await write_file(path, receive)
     await send_response(send, 200)
 
+async def delete(scope, send):
+    path = resolve_path(scope['path'])
+
+    if not os.path.isfile(path):
+        await send_response(send, 404)
+        return
+
+    os.remove(path)
+
+    await send_response(send, 204)
+
 async def app(scope, receive, send):
     assert scope['type'] == 'http'
 
@@ -63,3 +77,5 @@ async def app(scope, receive, send):
         await get(scope, send)
     elif scope['method'] == 'PUT':
         await put(scope, receive, send)
+    elif scope['method'] == 'DELETE':
+        await delete(scope, send)

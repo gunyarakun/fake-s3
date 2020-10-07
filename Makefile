@@ -3,5 +3,5 @@
 build:
 	docker build -t gunyarakun/fake-s3 .
 
-test:
+test: build
 	docker run --rm gunyarakun/fake-s3 pytest -v
