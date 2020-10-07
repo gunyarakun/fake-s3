@@ -1,5 +1,8 @@
 import os
+import hashlib
 import aiofiles
+from datetime import datetime
+import xml.etree.cElementTree as ET
 
 ROOT_PATH='/data'
 
@@ -30,8 +33,38 @@ async def send_response(send, status, headers=[], body=b''):
         'body': body,
     })
 
+def find_all_files(directory):
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            yield os.path.join(root, file)
+
+async def send_list(root_path, send):
+    root_elem = ET.Element('ListBucketResult', xmlns='http://s3.amazonaws.com/doc/2006-03-01/')
+    for path in find_all_files(root_path):
+        stat = os.stat(path)
+        mtime = datetime.utcfromtimestamp(stat.st_mtime)
+        iso_mtime = mtime.strftime('%Y-%m-%dT%H:%M:%SZ')
+        etag_key = (iso_mtime + path).encode('utf-8') # FIXME: wow, isn't from the content!
+        etag = '"' + hashlib.sha1(etag_key).hexdigest() + '"'
+        rel_path = os.path.relpath(path, root_path)
+
+        contents = ET.SubElement(root_elem, 'Contents')
+        ET.SubElement(contents, 'Key').text = rel_path
+        ET.SubElement(contents, 'LastModified').text = iso_mtime
+        ET.SubElement(contents, 'ETag').text = etag
+        ET.SubElement(contents, 'Size').text = str(stat.st_size)
+        ET.SubElement(contents, 'StorageClass').text = 'STANDARD'
+
+    await send_response(send, 200, [
+            [b'content-type', b'application/xml'],
+            [b'access-control-allow-origin', b'*'],
+        ], ET.tostring(root_elem, encoding='utf-8'))
+
 async def get(scope, send):
     path = resolve_path(scope['path'])
+
+    if os.path.isdir(path):
+        return await send_list(path, send)
 
     if not os.path.isfile(path):
         await send_response(send, 404)
