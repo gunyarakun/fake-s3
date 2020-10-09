@@ -68,5 +68,37 @@ def test_list(s3_client):
         body = f'test body {i}'
         s3_client.put_object(Bucket=bucket, Key=key, Body=body)
 
-    response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    # non trailing '/'
+    with pytest.raises(ClientError):
+        response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix + '/')
     assert len(response['Contents']) == 100
+
+def test_list_with_delimiter(s3_client):
+    bucket = f'bucket-list-with-delimiter'
+    body = 'body'
+    s3_client.put_object(Bucket=bucket, Key='file1', Body=body)
+    s3_client.put_object(Bucket=bucket, Key='file2', Body=body)
+    s3_client.put_object(Bucket=bucket, Key='dir1/file3', Body=body)
+    s3_client.put_object(Bucket=bucket, Key='dir1/file4', Body=body)
+    s3_client.put_object(Bucket=bucket, Key='dir1/dir2/file5', Body=body)
+    s3_client.put_object(Bucket=bucket, Key='dir1/dir2/dir3/file6', Body=body)
+    s3_client.put_object(Bucket=bucket, Key='dir1/dir4/file7', Body=body)
+    s3_client.put_object(Bucket=bucket, Key='file8', Body=body)
+
+    # non '/' delimiter
+    with pytest.raises(ClientError):
+        response = s3_client.list_objects_v2(Bucket=bucket, Prefix='dir1/', Delimiter='f')
+
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix='/', Delimiter='/')
+    assert set([x['Key'] for x in response['Contents']]) == {'file1', 'file2', 'file8'}
+    assert set([x['Prefix'] for x in response['CommonPrefixes']]) == {'dir1/'}
+
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix='dir1/', Delimiter='/')
+    assert set([x['Key'] for x in response['Contents']]) == {'dir1/file3', 'dir1/file4'}
+    assert set([x['Prefix'] for x in response['CommonPrefixes']]) == {'dir1/dir2/', 'dir1/dir4/'}
+
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix='dir1/dir2/', Delimiter='/')
+    assert set([x['Key'] for x in response['Contents']]) == {'dir1/dir2/file5'}
+    assert set([x['Prefix'] for x in response['CommonPrefixes']]) == {'dir1/dir2/dir3/'}

@@ -39,24 +39,48 @@ def find_all_files(directory):
         for file in files:
             yield os.path.join(root, file)
 
-async def send_list(bucket_path, prefix, send):
-    root_elem = ET.Element('ListBucketResult', xmlns='http://s3.amazonaws.com/doc/2006-03-01/')
-    prefix_path = os.path.join(bucket_path, prefix)
-    print(f'prefix: {prefix_path}')
-    for path in find_all_files(prefix_path):
-        stat = os.stat(path)
-        mtime = datetime.utcfromtimestamp(stat.st_mtime)
-        iso_mtime = mtime.strftime('%Y-%m-%dT%H:%M:%SZ')
-        etag_key = (iso_mtime + path).encode('utf-8') # FIXME: wow, isn't from the content!
-        etag = '"' + hashlib.sha1(etag_key).hexdigest() + '"'
-        rel_path = os.path.relpath(path, bucket_path)
+def generate_contents_element(root_elem, path, bucket_path):
+    stat = os.stat(path)
+    mtime = datetime.utcfromtimestamp(stat.st_mtime)
+    iso_mtime = mtime.strftime('%Y-%m-%dT%H:%M:%SZ')
+    etag_key = (iso_mtime + path).encode('utf-8') # FIXME: wow, isn't from the content!
+    etag = '"' + hashlib.sha1(etag_key).hexdigest() + '"'
+    rel_path = os.path.relpath(path, bucket_path)
 
-        contents = ET.SubElement(root_elem, 'Contents')
-        ET.SubElement(contents, 'Key').text = rel_path
-        ET.SubElement(contents, 'LastModified').text = iso_mtime
-        ET.SubElement(contents, 'ETag').text = etag
-        ET.SubElement(contents, 'Size').text = str(stat.st_size)
-        ET.SubElement(contents, 'StorageClass').text = 'STANDARD'
+    contents = ET.SubElement(root_elem, 'Contents')
+    ET.SubElement(contents, 'Key').text = rel_path
+    ET.SubElement(contents, 'LastModified').text = iso_mtime
+    ET.SubElement(contents, 'ETag').text = etag
+    ET.SubElement(contents, 'Size').text = str(stat.st_size)
+    ET.SubElement(contents, 'StorageClass').text = 'STANDARD'
+
+
+async def send_list(bucket_path, prefix, delimiter, send):
+    # Check trailing '/' on prefix
+    if prefix[-1:] != '/':
+        return await send_response(send, 400)
+    # Remove heading '/' on prefix
+    if prefix[:1] == '/':
+        prefix = prefix[1:]
+    prefix_path = os.path.join(bucket_path, prefix)
+
+    root_elem = ET.Element('ListBucketResult', xmlns='http://s3.amazonaws.com/doc/2006-03-01/')
+    if not os.path.isdir(prefix_path):
+        return await send_response(send, 400)
+    elif delimiter is None:
+        for path in find_all_files(prefix_path):
+            generate_contents_element(root_elem, path, bucket_path)
+    elif delimiter == '/':
+        for f in os.listdir(prefix_path):
+            path = os.path.join(prefix_path, f)
+            if os.path.isfile(path):
+                generate_contents_element(root_elem, path, bucket_path)
+            else:
+                common_prefixes = ET.SubElement(root_elem, 'CommonPrefixes')
+                ET.SubElement(common_prefixes, 'Prefix').text = prefix + f + '/'
+    else:
+        # Now supports only '/'
+        return await send_response(send, 400)
 
     await send_response(send, 200, [
             [b'content-type', b'application/xml'],
@@ -64,21 +88,24 @@ async def send_list(bucket_path, prefix, send):
         ], ET.tostring(root_elem, encoding='utf-8'))
 
 async def get(scope, send):
-    path = resolve_path(scope['path'])
+    url_path = scope['path']
+    path = resolve_path(url_path)
 
     if os.path.isdir(path):
-        # TODO: Check the path is only a bucket name
-        qs = urllib.parse.parse_qs(scope['query_string'])
-        return await send_list(path, qs[b'prefix'][0].decode('utf-8'), send)
-
-    if not os.path.isfile(path):
+        # TODO: Check the url_path is only a bucket name
+        qs = dict(urllib.parse.parse_qsl(scope.get('query_string', b'').decode('utf-8')))
+        await send_list(
+                path,
+                qs.get('prefix', '/'),
+                qs.get('delimiter'),
+                send)
+    elif os.path.isfile(path):
+        await send_response(send, 200, [
+                [b'content-type', b'binary/octet-stream'],
+                [b'access-control-allow-origin', b'*'],
+            ], await read_file(path))
+    else:
         await send_response(send, 404)
-        return
-
-    await send_response(send, 200, [
-            [b'content-type', b'binary/octet-stream'],
-            [b'access-control-allow-origin', b'*'],
-        ], await read_file(path))
 
 async def put(scope, receive, send):
     abspath = os.path.abspath(scope['path'])
