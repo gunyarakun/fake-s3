@@ -65,12 +65,14 @@ async def send_list(bucket_path, prefix, delimiter, send):
     prefix_path = os.path.join(bucket_path, prefix)
 
     root_elem = ET.Element('ListBucketResult', xmlns='http://s3.amazonaws.com/doc/2006-03-01/')
+    ET.SubElement(root_elem, 'Prefix').text = prefix
     if not os.path.isdir(prefix_path):
         return await send_response(send, 400)
     elif delimiter is None:
         for path in find_all_files(prefix_path):
             generate_contents_element(root_elem, path, bucket_path)
     elif delimiter == '/':
+        ET.SubElement(root_elem, 'Delimiter').text = delimiter
         for f in os.listdir(prefix_path):
             path = os.path.join(prefix_path, f)
             if os.path.isfile(path):
