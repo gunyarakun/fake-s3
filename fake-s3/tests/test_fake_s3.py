@@ -128,3 +128,6 @@ def test_list_with_delimiter(s3_client):
 def test_list_not_exists(s3_client):
     response = s3_client.list_objects_v2(Bucket='dont_exist', Prefix='')
     assert 'Contents' not in response
+
+    response = s3_client.list_objects_v2(Bucket='dont_exist', Prefix='/')
+    assert 'Contents' not in response
