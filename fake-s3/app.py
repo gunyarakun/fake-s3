@@ -36,8 +36,8 @@ async def send_response(send, status, headers=[], body=b''):
 
 def find_all_files(directory):
     for root, dirs, files in os.walk(directory):
-        for file in files:
-            yield os.path.join(root, file)
+        for file_path in files:
+            yield os.path.join(root, file_path)
 
 def generate_contents_element(root_elem, path, bucket_path):
     stat = os.stat(path)
@@ -56,12 +56,6 @@ def generate_contents_element(root_elem, path, bucket_path):
 
 
 async def send_list(bucket_path, prefix, delimiter, send):
-    # Check trailing '/' on prefix
-    if prefix[-1:] != '/':
-        return await send_response(send, 400)
-    # Remove heading '/' on prefix
-    if prefix[:1] == '/':
-        prefix = prefix[1:]
     prefix_path = os.path.join(bucket_path, prefix)
 
     root_elem = ET.Element('ListBucketResult', xmlns='http://s3.amazonaws.com/doc/2006-03-01/')
@@ -75,6 +69,9 @@ async def send_list(bucket_path, prefix, delimiter, send):
         for path in find_all_files(prefix_path):
             generate_contents_element(root_elem, path, bucket_path)
     elif delimiter == '/':
+        # Check trailing '/' on prefix
+        if prefix != '' and prefix[-1:] != '/':
+            prefix += '/'
         ET.SubElement(root_elem, 'Delimiter').text = delimiter
         for f in os.listdir(prefix_path):
             path = os.path.join(prefix_path, f)
@@ -84,7 +81,7 @@ async def send_list(bucket_path, prefix, delimiter, send):
                 common_prefixes = ET.SubElement(root_elem, 'CommonPrefixes')
                 ET.SubElement(common_prefixes, 'Prefix').text = prefix + f + '/'
     else:
-        # Now supports only '/'
+        # Now supports only '/' delimiter
         return await send_response(send, 400)
 
     await send_response(send, 200, [
@@ -95,13 +92,13 @@ async def send_list(bucket_path, prefix, delimiter, send):
 async def get(scope, send):
     url_path = scope['path']
     path = resolve_path(url_path)
-    qs = dict(urllib.parse.parse_qsl(scope.get('query_string', b'').decode('utf-8')))
+    qs = dict(urllib.parse.parse_qsl(scope.get('query_string', b'').decode('utf-8'), keep_blank_values=True))
 
     if 'prefix' in qs:
         # TODO: Check the url_path is only a bucket name
         await send_list(
                 path,
-                qs.get('prefix', '/'),
+                qs.get('prefix'),
                 qs.get('delimiter'),
                 send)
     elif os.path.isfile(path):
@@ -110,7 +107,15 @@ async def get(scope, send):
                 [b'access-control-allow-origin', b'*'],
             ], await read_file(path))
     else:
-        await send_response(send, 404)
+        root_elem = ET.Element('Error')
+        ET.SubElement(root_elem, 'Code').text = 'NoSuchKey'
+        ET.SubElement(root_elem, 'Message').text = 'The specified key does not exist.'
+
+        await send_response(send, 404, [
+                [b'content-type', b'application/xml'],
+                [b'access-control-allow-origin', b'*'],
+            ], ET.tostring(root_elem, encoding='utf-8'))
+
 
 async def put(scope, receive, send):
     abspath = os.path.abspath(scope['path'])

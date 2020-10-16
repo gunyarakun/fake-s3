@@ -60,6 +60,20 @@ def test_put_get_and_delete(s3_client):
     with pytest.raises(ClientError):
         response = s3_client.get_object(Bucket=bucket, Key=key)
 
+
+def test_get_not_exist(s3_client):
+    with pytest.raises(ClientError) as ex:
+        response = s3_client.get_object(Bucket='dont_exist', Key='key')
+    print(ex.value.response['Error'])
+    assert ex.value.response['Error']['Code'] == 'NoSuchKey'
+
+    s3_client.put_object(Bucket='new_bucket', Key='key', Body='body')
+
+    with pytest.raises(ClientError) as ex:
+        response = s3_client.get_object(Bucket='new_bucket', Key='dont_exist')
+    assert ex.value.response['Error']['Code'] == 'NoSuchKey'
+
+
 def test_list(s3_client):
     bucket = f'bucket-list'
     prefix = 'list'
@@ -72,9 +86,8 @@ def test_list(s3_client):
         body = f'test body {i}'
         s3_client.put_object(Bucket=bucket, Key=key, Body=body)
 
-    # non trailing '/'
-    with pytest.raises(ClientError):
-        response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    assert len(response['Contents']) == 100
 
     response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix + '/')
     assert len(response['Contents']) == 100
@@ -83,7 +96,7 @@ def test_list_with_delimiter(s3_client):
     bucket = f'bucket-list-with-delimiter'
     body = 'body'
 
-    response = s3_client.list_objects_v2(Bucket=bucket, Prefix='/', Delimiter='/')
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix='', Delimiter='/')
     assert 'Contents' not in response
 
     s3_client.put_object(Bucket=bucket, Key='file1', Body=body)
@@ -99,7 +112,7 @@ def test_list_with_delimiter(s3_client):
     with pytest.raises(ClientError):
         response = s3_client.list_objects_v2(Bucket=bucket, Prefix='dir1/', Delimiter='f')
 
-    response = s3_client.list_objects_v2(Bucket=bucket, Prefix='/', Delimiter='/')
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix='', Delimiter='/')
     assert set([x['Key'] for x in response['Contents']]) == {'file1', 'file2', 'file8'}
     assert set([x['Prefix'] for x in response['CommonPrefixes']]) == {'dir1/'}
 
@@ -110,3 +123,8 @@ def test_list_with_delimiter(s3_client):
     response = s3_client.list_objects_v2(Bucket=bucket, Prefix='dir1/dir2/', Delimiter='/')
     assert set([x['Key'] for x in response['Contents']]) == {'dir1/dir2/file5'}
     assert set([x['Prefix'] for x in response['CommonPrefixes']]) == {'dir1/dir2/dir3/'}
+
+
+def test_list_not_exists(s3_client):
+    response = s3_client.list_objects_v2(Bucket='dont_exist', Prefix='')
+    assert 'Contents' not in response
