@@ -63,6 +63,10 @@ def test_put_get_and_delete(s3_client):
 def test_list(s3_client):
     bucket = f'bucket-list'
     prefix = 'list'
+
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix + '/')
+    assert 'Contents' not in response
+
     for i in range(0, 100): # TODO: test over 1,000
         key = f'{prefix}/test-list-{i}'
         body = f'test body {i}'
@@ -78,6 +82,10 @@ def test_list(s3_client):
 def test_list_with_delimiter(s3_client):
     bucket = f'bucket-list-with-delimiter'
     body = 'body'
+
+    response = s3_client.list_objects_v2(Bucket=bucket, Prefix='/', Delimiter='/')
+    assert 'Contents' not in response
+
     s3_client.put_object(Bucket=bucket, Key='file1', Body=body)
     s3_client.put_object(Bucket=bucket, Key='file2', Body=body)
     s3_client.put_object(Bucket=bucket, Key='dir1/file3', Body=body)

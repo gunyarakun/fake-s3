@@ -66,8 +66,11 @@ async def send_list(bucket_path, prefix, delimiter, send):
 
     root_elem = ET.Element('ListBucketResult', xmlns='http://s3.amazonaws.com/doc/2006-03-01/')
     ET.SubElement(root_elem, 'Prefix').text = prefix
-    if not os.path.isdir(prefix_path):
-        return await send_response(send, 400)
+    if os.path.isfile(prefix_path):
+        generate_contents_element(root_elem, prefix_path, bucket_path)
+    elif not os.path.isdir(prefix_path):
+        # empty result
+        pass
     elif delimiter is None:
         for path in find_all_files(prefix_path):
             generate_contents_element(root_elem, path, bucket_path)
@@ -92,10 +95,10 @@ async def send_list(bucket_path, prefix, delimiter, send):
 async def get(scope, send):
     url_path = scope['path']
     path = resolve_path(url_path)
+    qs = dict(urllib.parse.parse_qsl(scope.get('query_string', b'').decode('utf-8')))
 
-    if os.path.isdir(path):
+    if 'prefix' in qs:
         # TODO: Check the url_path is only a bucket name
-        qs = dict(urllib.parse.parse_qsl(scope.get('query_string', b'').decode('utf-8')))
         await send_list(
                 path,
                 qs.get('prefix', '/'),
