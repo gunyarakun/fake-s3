@@ -40,8 +40,12 @@ def s3_client(available_port, server):
 
 @pytest.fixture(autouse=True)
 def clear_data():
-    if os.path.isdir(ROOT_PATH):
-        shutil.rmtree(ROOT_PATH)
+    # Do not delete ROOT_PATH itself
+    for root, dirs, files in os.walk(ROOT_PATH):
+        for f in files:
+            os.unlink(os.path.join(root, f))
+        for d in dirs:
+            shutil.rmtree(os.path.join(root, d))
 
 def test_put_get_and_delete(s3_client):
     epoch = int(time.time() * 1000)
