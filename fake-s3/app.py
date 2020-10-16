@@ -5,7 +5,7 @@ import aiofiles
 from datetime import datetime
 import xml.etree.cElementTree as ET
 
-ROOT_PATH='/data'
+ROOT_PATH=os.getenv('ROOT_PATH', '/data')
 
 async def read_file(path):
     async with aiofiles.open(path, mode='rb') as f:
