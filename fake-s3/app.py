@@ -27,7 +27,7 @@ async def send_response(send, status, headers=[], body=b''):
     await send({
         'type': 'http.response.start',
         'status': status,
-        'headers': headers,
+        'headers': headers + [[b'access-control-allow-origin', b'*']],
     })
     await send({
         'type': 'http.response.body',
@@ -86,7 +86,6 @@ async def send_list(bucket_path, prefix, delimiter, send):
 
     await send_response(send, 200, [
             [b'content-type', b'application/xml'],
-            [b'access-control-allow-origin', b'*'],
         ], ET.tostring(root_elem, encoding='utf-8'))
 
 async def get(scope, send):
@@ -104,7 +103,6 @@ async def get(scope, send):
     elif os.path.isfile(path):
         await send_response(send, 200, [
                 [b'content-type', b'binary/octet-stream'],
-                [b'access-control-allow-origin', b'*'],
             ], await read_file(path))
     else:
         root_elem = ET.Element('Error')
@@ -113,7 +111,6 @@ async def get(scope, send):
 
         await send_response(send, 404, [
                 [b'content-type', b'application/xml'],
-                [b'access-control-allow-origin', b'*'],
             ], ET.tostring(root_elem, encoding='utf-8'))
 
 
